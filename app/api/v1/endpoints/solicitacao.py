@@ -19,8 +19,6 @@ from core.deps import get_session, get_current_user
 
 logging.getLogger('ultralytics').setLevel(logging.ERROR)
 
-
-
 router = APIRouter()
 semaphore = asyncio.Semaphore(5)
 
@@ -39,7 +37,7 @@ async def process_batch_images(images: List[str], modelos: List[ModeloModel]) ->
     async with semaphore:
         detection_tasks = [get_model(modelo) for modelo in modelos]
         loaded_models = await asyncio.gather(*detection_tasks)
-        
+
         detection_results = await asyncio.gather(
             *[asyncio.to_thread(model.predict, images, stream=True) for model in loaded_models]
         )
@@ -59,25 +57,28 @@ async def process_images(images: List[str], modelos: List[ModeloModel], photo_id
     detection_results = await process_batch_images(images, modelos)
     end_time = time.time()
     logging.info(f"Processed batch of {len(images)} images in {end_time - start_time} seconds")
-    
+
     resultados = []
     for photo_id, image in zip(photo_ids, images):
         detection_result = {model: detection_results[model][image] for model in detection_results}
         resultados.append(Resultado(PhotoId=photo_id, URL=image, Resultado=detection_result))
-    
+
     return resultados
 
 
 async def detect_objects(request: PolesRequest, modelos: List[ModeloModel], solicitacao_id: int):
     response = {solicitacao_id: []}
+    batch_size = 10  # Define o tamanho do lote de processamento
     for pole in request.Poles:
         images = [photo.URL for photo in pole.Photos]
         photo_ids = [photo.PhotoId for photo in pole.Photos]
-        results = await process_images(images, modelos, photo_ids)
-        
-        pole_results = {"PoleId": pole.PoleId, "Photos": [result.model_dump() for result in results]}
-        response[solicitacao_id].append(pole_results)
-    
+        for i in range(0, len(images), batch_size):
+            batch_images = images[i:i+batch_size]
+            batch_photo_ids = photo_ids[i:i+batch_size]
+            results = await process_images(batch_images, modelos, batch_photo_ids)
+            pole_results = {"PoleId": pole.PoleId, "Photos": [result.model_dump() for result in results]}
+            response[solicitacao_id].append(pole_results)
+
     os.makedirs('results', exist_ok=True)
     response_file_path = os.path.join('results', f"solicitacao_{solicitacao_id}.json")
     with open(response_file_path, 'w') as response_file:
@@ -96,10 +97,10 @@ async def obter_modelo(modelo_id: int, db: AsyncSession = Depends(get_session), 
         query = select(ModeloModel).filter(ModeloModel.modelo_id == modelo_id, ModeloModel.status == 1)
         result = await session.execute(query)
         modelos = result.scalars().unique().all()
-    
+
         if not modelos:
             raise HTTPException(status_code=404, detail="Nenhum modelo ativo encontrado")
-        
+
         return modelos
 
 
@@ -109,16 +110,16 @@ async def obter_solicitacao(solicitacao_id: int, db: AsyncSession = Depends(get_
         query = select(SolicitacaoModel).filter(SolicitacaoModel.id == solicitacao_id)
         result = await session.execute(query)
         solicitacao = result.scalars().unique().one_or_none()
-    
+
         if not solicitacao:
             raise HTTPException(status_code=404, detail="Nenhuma solicitação encontrada")
-        
+
         if solicitacao.status == "Concluído":
             response_file_path = os.path.join('results', f"solicitacao_{solicitacao_id}.json")
             if not os.path.exists(response_file_path):
                 raise HTTPException(status_code=404, detail="Arquivo de resultado não encontrado")
             return FileResponse(path=response_file_path, filename=f"solicitacao_{solicitacao_id}.json", media_type='application/json')
-        
+
         return [solicitacao]
 
 
@@ -149,12 +150,12 @@ async def trigger_model_and_detection_tasks(solicitacao_id: int, db: AsyncSessio
 async def criar_solicitacao(poles_request: PolesRequest, background_tasks: BackgroundTasks, db: AsyncSession = Depends(get_session), usuario_logado: UsuarioModel = Depends(get_current_user)):
     total_poles = len(poles_request.Poles)
     total_photos = sum(len(pole.Photos) for pole in poles_request.Poles)
-    
+
     if total_poles > 100:
         raise HTTPException(status_code=400, detail="Número de postes não pode ser maior que 100.")
-    
+
     nova_solicitacao: SolicitacaoModel = SolicitacaoModel(status="Em andamento", postes=total_poles, imagens=total_photos, usuario_id=usuario_logado.id)
-    
+
     async with db as session:
         session.add(nova_solicitacao)
         await session.commit()

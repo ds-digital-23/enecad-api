@@ -1,0 +1,49 @@
+{
+    "1": [
+        {
+            "PoleId": 91,
+            "Photos": [
+                {
+                    "PhotoId": 1,
+                    "URL": "https://geosweb.blob.core.windows.net/pictures/COELBA/BA/CRISOPOLIS/2021_03_01/alessandro.carvalho/01/7779.JPG",
+                    "Resultado": {
+                        "model_ip_v1.2.pt": false
+                    }
+                },
+                {
+                    "PhotoId": 2,
+                    "URL": "https://geosweb.blob.core.windows.net/pictures/COELBA/BA/CRISOPOLIS/2021_03_01/alessandro.carvalho/01/7778.JPG",
+                    "Resultado": {
+                        "model_ip_v1.2.pt": false
+                    }
+                },
+                {
+                    "PhotoId": 3,
+                    "URL": "https://geosweb.blob.core.windows.net/pictures/COELBA/BA/CRISOPOLIS/2021_03_01/alessandro.carvalho/01/7777.JPG",
+                    "Resultado": {
+                        "model_ip_v1.2.pt": true
+                    }
+                }
+            ]
+        },
+        {
+            "PoleId": 95,
+            "Photos": [
+                {
+                    "PhotoId": 1,
+                    "URL": "https://geosweb.blob.core.windows.net/pictures/COELBA/BA/CRISOPOLIS/2021_03_02/reinaldo.araujo/01/7032.JPG",
+                    "Resultado": {
+                        "model_ip_v1.2.pt": false
+                    }
+                },
+                {
+                    "PhotoId": 2,
+                    "URL": "https://geosweb.blob.core.windows.net/pictures/COELBA/BA/CRISOPOLIS/2021_03_02/reinaldo.araujo/01/7033.JPG",
+                    "Resultado": {
+                        "model_ip_v1.2.pt": true
+                    }
+                }
+            ]
+        }
+    ]
+}

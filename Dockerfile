@@ -1,8 +1,6 @@
 FROM python:3.11-bullseye
 
 ENV PYTHONUNBUFFERED=1
-ENV PATH="/root/.local/bin:$PATH"
-ENV PYTHONPATH='/'
 
 # Instala dependências do sistema necessárias
 RUN apt-get update -y && apt-get install -y \

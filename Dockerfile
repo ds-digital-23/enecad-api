@@ -6,6 +6,7 @@ RUN apt-get update -y && apt-get install -y \
     build-essential \
     libsm6 \
     libxext6 \
+    libgl1-mesa-glx \
     && apt-get clean
 
 RUN python -m venv /opt/venv

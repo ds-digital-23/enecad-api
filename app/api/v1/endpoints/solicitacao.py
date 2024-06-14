@@ -27,7 +27,7 @@ loaded_models = {}
 
 async def get_model(modelo: ModeloModel):
     if modelo.modelo_nome not in loaded_models:
-        model_path = os.path.join('app', 'ia', modelo.modelo_nome)
+        model_path = os.path.join('ia', modelo.modelo_nome)
         model_ia = await asyncio.to_thread(YOLO, model_path)
         loaded_models[modelo.modelo_nome] = model_ia
     return loaded_models[modelo.modelo_nome]

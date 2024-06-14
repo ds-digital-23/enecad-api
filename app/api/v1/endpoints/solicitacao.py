@@ -16,30 +16,21 @@ from models.modelo_model import ModeloModel
 from schemas.modelo_schema import ModeloResponse
 from schemas.solicitacao_schema import SolicitacaoCreate, PolesRequest, Resultado
 from core.deps import get_session, get_current_user
-
-#logging.getLogger('ultralytics').setLevel(logging.ERROR)
+from main import loaded_models  # Importando os modelos carregados
 
 router = APIRouter()
 semaphore = asyncio.Semaphore(5)
 
-loaded_models = {}
+async def get_model(model_name: str):
+    return loaded_models.get(model_name)
 
-
-async def get_model(modelo: ModeloModel):
-    if modelo.modelo_nome not in loaded_models:
-        model_path = os.path.join('ia', modelo.modelo_nome)
-        model_ia = await asyncio.to_thread(YOLO, model_path)
-        loaded_models[modelo.modelo_nome] = model_ia
-    return loaded_models[modelo.modelo_nome]
-
-
-async def process_batch_images(images: List[str], modelos: List[ModeloModel]) -> Dict[str, Dict[str, bool]]:
+async def process_batch_images(images: List[str], modelos: List[str]) -> Dict[str, Dict[str, bool]]:
     async with semaphore:
         detection_tasks = [get_model(modelo) for modelo in modelos]
-        loaded_models = await asyncio.gather(*detection_tasks)
+        loaded_models_instances = await asyncio.gather(*detection_tasks)
 
         detection_results = await asyncio.gather(
-            *[asyncio.to_thread(model.predict, images, stream=True) for model in loaded_models]
+            *[asyncio.to_thread(model.predict, images, stream=True) for model in loaded_models_instances]
         )
 
     combined_results = {}
@@ -47,12 +38,11 @@ async def process_batch_images(images: List[str], modelos: List[ModeloModel]) ->
         model_results = {}
         for image, result in zip(images, results):
             model_results[image] = any(len(res.boxes) > 0 for res in result)
-        combined_results[model.modelo_nome] = model_results
+        combined_results[model] = model_results
 
     return combined_results
 
-
-async def process_images(images: List[str], modelos: List[ModeloModel], photo_ids: List[int]) -> List[Resultado]:
+async def process_images(images: List[str], modelos: List[str], photo_ids: List[int]) -> List[Resultado]:
     start_time = time.time()
     detection_results = await process_batch_images(images, modelos)
     end_time = time.time()
@@ -65,10 +55,9 @@ async def process_images(images: List[str], modelos: List[ModeloModel], photo_id
 
     return resultados
 
-
-async def detect_objects(request: PolesRequest, modelos: List[ModeloModel], solicitacao_id: int):
+async def detect_objects(request: PolesRequest, modelos: List[str], solicitacao_id: int):
     response = {solicitacao_id: []}
-    batch_size = 10  # Define o tamanho do lote de processamento
+    batch_size = 10
     for pole in request.Poles:
         images = [photo.URL for photo in pole.Photos]
         photo_ids = [photo.PhotoId for photo in pole.Photos]
@@ -90,7 +79,6 @@ async def detect_objects(request: PolesRequest, modelos: List[ModeloModel], soli
 
     return response
 
-
 @router.get("/obter_modelo/{modelo_id}", response_model=List[ModeloResponse])
 async def obter_modelo(modelo_id: int, db: AsyncSession = Depends(get_session), usuario_logado: UsuarioModel = Depends(get_current_user)):
     async with db as session:
@@ -102,7 +90,6 @@ async def obter_modelo(modelo_id: int, db: AsyncSession = Depends(get_session), 
             raise HTTPException(status_code=404, detail="Nenhum modelo ativo encontrado")
 
         return modelos
-
 
 @router.get("/obter_solicitacao/{solicitacao_id}", response_model=List[SolicitacaoCreate])
 async def obter_solicitacao(solicitacao_id: int, db: AsyncSession = Depends(get_session), usuario_logado: UsuarioModel = Depends(get_current_user)):
@@ -122,7 +109,6 @@ async def obter_solicitacao(solicitacao_id: int, db: AsyncSession = Depends(get_
 
         return [solicitacao]
 
-
 async def update_status(solicitacao_id: int, status: str, db: AsyncSession):
     async with db as session:
         query = select(SolicitacaoModel).filter(SolicitacaoModel.id == solicitacao_id)
@@ -133,18 +119,16 @@ async def update_status(solicitacao_id: int, status: str, db: AsyncSession):
             await session.commit()
             await session.refresh(solicitacao)
 
-
 async def trigger_model_and_detection_tasks(solicitacao_id: int, db: AsyncSession, poles_request: PolesRequest):
     async with db as session:
         try:
-            modelos = await obter_modelo(modelo_id=1, db=session)
+            modelos = list(loaded_models.keys())
             detection_results = await detect_objects(request=poles_request, modelos=modelos, solicitacao_id=solicitacao_id)
             await update_status(solicitacao_id=solicitacao_id, status='Concluído', db=session)
             return detection_results
         except Exception as e:
             await update_status(solicitacao_id=solicitacao_id, status='Falhou', db=session)
             raise e
-
 
 @router.post("/", response_model=SolicitacaoCreate)
 async def criar_solicitacao(poles_request: PolesRequest, background_tasks: BackgroundTasks, db: AsyncSession = Depends(get_session), usuario_logado: UsuarioModel = Depends(get_current_user)):

@@ -26,18 +26,22 @@ model_path = os.path.join('ia', 'model_ip_v1.3.pt')
 loaded_model = None
 
 
-async def get_model():
+async def load_model():
     global loaded_model
     if loaded_model is None:
         logging.info(f"Loading model from {model_path}")
-        loaded_model = await asyncio.to_thread(YOLO, model_path)
+        try:
+            loaded_model = await asyncio.to_thread(YOLO, model_path)
+            logging.info("Model loaded successfully")
+        except Exception as e:
+            logging.error(f"Error loading model: {e}")
+            raise e
     return loaded_model
 
 
 async def process_batch_images(images: List[str]) -> Dict[str, bool]:
     async with semaphore:
-        model = await get_model()
-
+        model = await load_model()
         detection_results = await asyncio.to_thread(model.predict, images, stream=True)
 
     results = {}
@@ -162,3 +166,8 @@ async def criar_solicitacao(poles_request: PolesRequest, background_tasks: Backg
         background_tasks.add_task(trigger_model_and_detection_tasks, nova_solicitacao.id, session, poles_request)
 
         return {"id": nova_solicitacao.id, "status": nova_solicitacao.status, "postes": nova_solicitacao.postes, "imagens": nova_solicitacao.imagens}
+
+# Função para testar o carregamento do modelo isoladamente
+if __name__ == "__main__":
+    logging.basicConfig(level=logging.INFO)
+    asyncio.run(load_model())

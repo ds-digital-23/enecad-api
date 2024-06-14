@@ -16,7 +16,7 @@ from models.modelo_model import ModeloModel
 from schemas.modelo_schema import ModeloResponse
 from schemas.solicitacao_schema import SolicitacaoCreate, PolesRequest, Resultado
 from core.deps import get_session, get_current_user
-from main import loaded_models  # Importando os modelos carregados
+from models_loader import loaded_models  # Importando os modelos carregados
 
 router = APIRouter()
 semaphore = asyncio.Semaphore(5)

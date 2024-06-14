@@ -22,7 +22,7 @@ from core.deps import get_session, get_current_user
 router = APIRouter()
 semaphore = asyncio.Semaphore(5)
 
-model_path = os.path.join('ia', 'model_ip_v1.3.pt')
+model_path = os.path.join('ia', 'model_ip_v1.2.pt')
 loaded_model = None
 
 

@@ -17,56 +17,64 @@ from schemas.modelo_schema import ModeloResponse
 from schemas.solicitacao_schema import SolicitacaoCreate, PolesRequest, Resultado
 from core.deps import get_session, get_current_user
 
-#logging.getLogger('ultralytics').setLevel(logging.ERROR)
+# logging.getLogger('ultralytics').setLevel(logging.ERROR)
 
 router = APIRouter()
 semaphore = asyncio.Semaphore(5)
 
-loaded_models = {}
+model_path = 'ia/model_ip_v1.3.pt'
+
+def test_model_loading():
+    try:
+        model = YOLO(model_path)
+        logging.info("Model loaded successfully")
+    except Exception as e:
+        logging.error(f"Error loading model: {e}")
 
 
-async def get_model(modelo: ModeloModel):
-    if modelo.modelo_nome not in loaded_models:
-        model_path = os.path.join('ia', modelo.modelo_nome)
-        model_ia = await asyncio.to_thread(YOLO, model_path)
-        loaded_models[modelo.modelo_nome] = model_ia
-    return loaded_models[modelo.modelo_nome]
+loaded_model = None
 
 
-async def process_batch_images(images: List[str], modelos: List[ModeloModel]) -> Dict[str, Dict[str, bool]]:
+async def load_model():
+    global loaded_model
+    if loaded_model is None:
+        logging.info(f"Loading model from {model_path}")
+        try:
+            loaded_model = await asyncio.to_thread(YOLO, model_path)
+            logging.info("Model loaded successfully")
+        except Exception as e:
+            logging.error(f"Error loading model: {e}")
+            raise e
+    return loaded_model
+
+
+async def process_batch_images(images: List[str]) -> Dict[str, bool]:
     async with semaphore:
-        detection_tasks = [get_model(modelo) for modelo in modelos]
-        loaded_models = await asyncio.gather(*detection_tasks)
+        model = await load_model()
+        detection_results = await asyncio.to_thread(model.predict, images, stream=True)
 
-        detection_results = await asyncio.gather(
-            *[asyncio.to_thread(model.predict, images, stream=True) for model in loaded_models]
-        )
+    results = {}
+    for image, result in zip(images, detection_results):
+        results[image] = any(len(res.boxes) > 0 for res in result)
 
-    combined_results = {}
-    for model, results in zip(modelos, detection_results):
-        model_results = {}
-        for image, result in zip(images, results):
-            model_results[image] = any(len(res.boxes) > 0 for res in result)
-        combined_results[model.modelo_nome] = model_results
-
-    return combined_results
+    return results
 
 
-async def process_images(images: List[str], modelos: List[ModeloModel], photo_ids: List[int]) -> List[Resultado]:
+async def process_images(images: List[str], photo_ids: List[int]) -> List[Resultado]:
     start_time = time.time()
-    detection_results = await process_batch_images(images, modelos)
+    detection_results = await process_batch_images(images)
     end_time = time.time()
     logging.info(f"Processed batch of {len(images)} images in {end_time - start_time} seconds")
 
     resultados = []
     for photo_id, image in zip(photo_ids, images):
-        detection_result = {model: detection_results[model][image] for model in detection_results}
-        resultados.append(Resultado(PhotoId=photo_id, URL=image, Resultado=detection_result))
+        detection_result = detection_results[image]
+        resultados.append(Resultado(PhotoId=photo_id, URL=image, Resultado={"model_ip_v1.3.pt": detection_result}))
 
     return resultados
 
 
-async def detect_objects(request: PolesRequest, modelos: List[ModeloModel], solicitacao_id: int):
+async def detect_objects(request: PolesRequest, solicitacao_id: int):
     response = {solicitacao_id: []}
     batch_size = 10  # Define o tamanho do lote de processamento
     for pole in request.Poles:
@@ -75,7 +83,7 @@ async def detect_objects(request: PolesRequest, modelos: List[ModeloModel], soli
         for i in range(0, len(images), batch_size):
             batch_images = images[i:i+batch_size]
             batch_photo_ids = photo_ids[i:i+batch_size]
-            results = await process_images(batch_images, modelos, batch_photo_ids)
+            results = await process_images(batch_images, batch_photo_ids)
             pole_results = {"PoleId": pole.PoleId, "Photos": [result.model_dump() for result in results]}
             response[solicitacao_id].append(pole_results)
 
@@ -137,11 +145,13 @@ async def update_status(solicitacao_id: int, status: str, db: AsyncSession):
 async def trigger_model_and_detection_tasks(solicitacao_id: int, db: AsyncSession, poles_request: PolesRequest):
     async with db as session:
         try:
-            modelos = await obter_modelo(modelo_id=1, db=session)
-            detection_results = await detect_objects(request=poles_request, modelos=modelos, solicitacao_id=solicitacao_id)
+            logging.info(f"Triggering detection tasks for solicitation {solicitacao_id}")
+            detection_results = await detect_objects(request=poles_request, solicitacao_id=solicitacao_id)
             await update_status(solicitacao_id=solicitacao_id, status='Concluído', db=session)
+            logging.info(f"Detection tasks completed for solicitation {solicitacao_id}")
             return detection_results
         except Exception as e:
+            logging.error(f"Error during detection tasks for solicitation {solicitacao_id}: {e}")
             await update_status(solicitacao_id=solicitacao_id, status='Falhou', db=session)
             raise e
 
@@ -161,6 +171,13 @@ async def criar_solicitacao(poles_request: PolesRequest, background_tasks: Backg
         await session.commit()
         await session.refresh(nova_solicitacao)
 
+        logging.info(f"Created new solicitation with id {nova_solicitacao.id}")
         background_tasks.add_task(trigger_model_and_detection_tasks, nova_solicitacao.id, session, poles_request)
 
         return {"id": nova_solicitacao.id, "status": nova_solicitacao.status, "postes": nova_solicitacao.postes, "imagens": nova_solicitacao.imagens}
+
+# Função para testar o carregamento do modelo isoladamente
+if __name__ == "__main__":
+    logging.basicConfig(level=logging.INFO)
+    test_model_loading()
+    asyncio.run(load_model())

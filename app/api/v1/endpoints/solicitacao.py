@@ -22,7 +22,16 @@ from core.deps import get_session, get_current_user
 router = APIRouter()
 semaphore = asyncio.Semaphore(5)
 
-model_path = os.path.join('ia', 'model_ip_v1.2.pt')
+model_path = 'ia/model_ip_v1.3.pt'
+
+def test_model_loading():
+    try:
+        model = YOLO(model_path)
+        logging.info("Model loaded successfully")
+    except Exception as e:
+        logging.error(f"Error loading model: {e}")
+
+
 loaded_model = None
 
 
@@ -170,4 +179,5 @@ async def criar_solicitacao(poles_request: PolesRequest, background_tasks: Backg
 # Função para testar o carregamento do modelo isoladamente
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO)
+    test_model_loading()
     asyncio.run(load_model())

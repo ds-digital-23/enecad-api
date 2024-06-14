@@ -29,6 +29,7 @@ loaded_model = None
 async def get_model():
     global loaded_model
     if loaded_model is None:
+        logging.info(f"Loading model from {model_path}")
         loaded_model = await asyncio.to_thread(YOLO, model_path)
     return loaded_model
 
@@ -131,10 +132,13 @@ async def update_status(solicitacao_id: int, status: str, db: AsyncSession):
 async def trigger_model_and_detection_tasks(solicitacao_id: int, db: AsyncSession, poles_request: PolesRequest):
     async with db as session:
         try:
+            logging.info(f"Triggering detection tasks for solicitation {solicitacao_id}")
             detection_results = await detect_objects(request=poles_request, solicitacao_id=solicitacao_id)
             await update_status(solicitacao_id=solicitacao_id, status='Concluído', db=session)
+            logging.info(f"Detection tasks completed for solicitation {solicitacao_id}")
             return detection_results
         except Exception as e:
+            logging.error(f"Error during detection tasks for solicitation {solicitacao_id}: {e}")
             await update_status(solicitacao_id=solicitacao_id, status='Falhou', db=session)
             raise e
 
@@ -154,6 +158,7 @@ async def criar_solicitacao(poles_request: PolesRequest, background_tasks: Backg
         await session.commit()
         await session.refresh(nova_solicitacao)
 
+        logging.info(f"Created new solicitation with id {nova_solicitacao.id}")
         background_tasks.add_task(trigger_model_and_detection_tasks, nova_solicitacao.id, session, poles_request)
 
         return {"id": nova_solicitacao.id, "status": nova_solicitacao.status, "postes": nova_solicitacao.postes, "imagens": nova_solicitacao.imagens}

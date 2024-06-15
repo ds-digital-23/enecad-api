@@ -3,7 +3,7 @@
 from fastapi import FastAPI
 from fastapi.responses import JSONResponse
 from contextlib import asynccontextmanager
-from api.v1.endpoints.models_loader import load_models
+from models_loader import load_models
 from core.configs import settings
 from api.v1.api import api_router
 

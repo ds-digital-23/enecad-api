@@ -13,3 +13,4 @@ async def load_models():
         model_ia = await asyncio.to_thread(YOLO, model_path)
         loaded_models[model_file] = model_ia
     print("Modelos carregados:", loaded_models)
+    return loaded_models

@@ -4,6 +4,7 @@ import asyncio
 import time
 import json
 import httpx
+import gc
 from typing import List, Dict
 from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks
 from fastapi.responses import FileResponse
@@ -40,6 +41,9 @@ async def process_batch_images(images: List[str], modelos: List[str]) -> Dict[st
             model_results[image] = any(len(res.boxes) > 0 for res in result)
         combined_results[model] = model_results
 
+    # Força a coleta de lixo para liberar memória
+    gc.collect()
+
     return combined_results
 
 async def process_images(images: List[str], modelos: List[str], photo_ids: List[int]) -> List[Resultado]:
@@ -57,7 +61,7 @@ async def process_images(images: List[str], modelos: List[str], photo_ids: List[
 
 async def detect_objects(request: PolesRequest, modelos: List[str], solicitacao_id: int):
     response = {solicitacao_id: []}
-    batch_size = 10
+    batch_size = 5  # Reduz o tamanho do lote para diminuir o uso de memória
     for pole in request.Poles:
         images = [photo.URL for photo in pole.Photos]
         photo_ids = [photo.PhotoId for photo in pole.Photos]
